@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Cloud Control",
+    "description": "List, read and continue sessions that live on another DSH instance from this window. Execution stays on the remote Host."
+  }
+}

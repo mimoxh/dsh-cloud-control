@@ -1,0 +1,17 @@
+# dsh-cloud-control bundle layer.
+#
+# This row is inserted when the bundle is selected in a profile. Its configuration
+# is supplied by the profile's own `cordis.patch.yml` (a row patch replaces the
+# whole config object, so restate every field you keep), for example:
+#
+#   - id: cloud-control
+#     name: dsh-cloud-control
+#     config:
+#       role: endpoint
+#       displayName: NAS
+#       endpoint: { enabled: true, tokenEnv: DSH_CLOUD_TOKEN }
+#
+# See README.md for the controller and relay configurations.
+- insert:
+    - id: cloud-control
+      name: dsh-cloud-control
