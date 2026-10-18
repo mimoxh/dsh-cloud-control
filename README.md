@@ -80,11 +80,15 @@ desktop profile 由 Electron 独占，CLI 不接管，请用 **设置 → 插件
       - id: nas
         label: NAS
         kind: direct
-        baseUrl: 'http://192.168.1.10:3080'   # NAS 上 DSH 的局域网地址
+        baseUrl: 'https://192.168.1.10:10443'     # NAS 上 DSH 的地址（Caddy 前是 https）
         tokenEnv: DSH_CLOUD_TOKEN
+        basicAuth: { user: admin, password: '<caddy-basic-auth>' }
+        allowInsecureTls: true                    # Caddy 自签证书时为 true
     relay:
-      hubUrl: 'http://192.168.1.10:3080/cloud-control/v1/relay'
-      tokenEnv: DSH_CLOUD_TOKEN               # 让 NAS 也能看/用桌面的会话
+      hubUrl: 'https://192.168.1.10:10443/cloud-control/v1/relay'
+      tokenEnv: DSH_CLOUD_TOKEN                   # 让 NAS 也能看/用桌面的会话
+      basicAuth: { user: admin, password: '<caddy-basic-auth>' }
+      allowInsecureTls: true
     pollIntervalMs: 2000
     maxMessages: 60
 ```
@@ -105,28 +109,49 @@ desktop profile 由 Electron 独占，CLI 不接管，请用 **设置 → 插件
 | `endpoint.allowFrom` | `[]` | 可选来源白名单：`10.0.0.5`、`10.0.0.0/8`、`loopback` |
 | `endpoint.allowMethods` | 见下 | 允许转发的官方端点白名单 |
 | `endpoint.maxBodyBytes` | `1048576` | 请求体上限 |
-| `peers[]` | `[]` | 对端：`{id,label,kind:'direct'\|'relay',baseUrl?,token/tokenEnv,timeoutMs?}` |
+| `peers[]` | `[]` | 对端：`{id,label,kind:'direct'\|'relay',baseUrl?,token/tokenEnv,basicAuth?,allowInsecureTls?,timeoutMs?}` |
 | `relay.enabled` | `false` | 充当 hub，挂载 `/relay/poll`、`/relay/result` |
 | `relay.hubUrl` | — | 充当 spoke：拨号到 hub 的 relay 基址 |
 | `relay.token` / `tokenEnv` | 回退到 `endpoint.token` | relay 路由的 token |
+| `relay.basicAuth` / `relay.allowInsecureTls` | — | 同 peers，用于 spoke 拨号时经过的反代 |
 | `relay.waitMs` | `25000` | 长轮询时长（1000–30000） |
 | `relay.maxQueue` / `requestTtlMs` | `32` / `30000` | hub 队列上限与请求存活时间 |
 
 默认 `allowMethods`：`session/list`、`session/projections`、`session/page`、`session/prompt`、`session/cancel`、`session/updateQueue`。
 
+### 反向代理（1Panel / Caddy）下的配置
+
+自建部署通常把 DSH 放在 Caddy 后面：对外是 **HTTPS**，并可能带一层 **Basic Auth**。此时：
+
+- `baseUrl` / `relay.hubUrl` 用 `https://…`；
+- 反代的 Basic Auth 写进 `basicAuth: { user, password }`；
+- 证书是自签的（Caddy 内部 CA）时加 `allowInsecureTls: true`（仅对这一个对端生效，不会关闭全局 TLS 校验）；
+- 本插件的 token 走**独立请求头** `X-Cloud-Control-Token`，因此和 `Authorization: Basic …` 互不冲突（也仍接受 `Authorization: Bearer …`）。
+
+```yaml
+peers:
+  - id: nas
+    label: NAS
+    kind: direct
+    baseUrl: 'https://192.168.1.10:10443'
+    tokenEnv: DSH_CLOUD_TOKEN
+    basicAuth: { user: admin, password: '<caddy-basic-auth>' }
+    allowInsecureTls: true
+```
+
 ## 验证
 
 ```sh
-# 端点存活 + 版本
-curl -s -H "Authorization: Bearer $TOKEN" http://<NAS>:3080/cloud-control/v1/health
+# 端点存活 + 版本（反代带 Basic Auth 时加 -u，自签证书加 -k）
+curl -s -k -u admin:pass -H "X-Cloud-Control-Token: $TOKEN" https://<NAS>:10443/cloud-control/v1/health
 
 # 直接读一次会话列表
-curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+curl -s -k -u admin:pass -H "X-Cloud-Control-Token: $TOKEN" -H 'content-type: application/json' \
   -d '{"method":"session/list","payload":{"args":{"_request":{}}}}' \
-  http://<NAS>:3080/cloud-control/v1/rpc
+  https://<NAS>:10443/cloud-control/v1/rpc
 
 # 负例：无 token → 401；白名单外方法 → 403
-curl -s -o /dev/null -w '%{http_code}\n' http://<NAS>:3080/cloud-control/v1/health
+curl -s -k -u admin:pass -o /dev/null -w '%{http_code}\n' https://<NAS>:10443/cloud-control/v1/health
 ```
 
 面板链路（本机浏览器 Cookie）：打开 DSH → 侧边栏「云控台」→ 选择对端 → 选择会话。

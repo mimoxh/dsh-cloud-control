@@ -53,6 +53,27 @@ test('separates relay hub from relay spoke', () => {
   assert.throws(() => normalizeConfig({ relay: { hubUrl: 'not-a-url', token: 't' } }), /not a URL/u);
 });
 
+test('accepts reverse-proxy Basic auth and self-signed TLS per peer', () => {
+  const config = normalizeConfig({
+    peers: [{
+      id: 'nas',
+      baseUrl: 'https://192.168.1.10:10443',
+      token: 't',
+      basicAuth: { username: 'admin', password: 'secret' },
+      allowInsecureTls: true
+    }]
+  });
+  assert.deepEqual(config.peers[0].basicAuth, { user: 'admin', password: 'secret' });
+  assert.equal(config.peers[0].allowInsecureTls, true);
+  assert.throws(() => normalizeConfig({ peers: [{ id: 'a', baseUrl: 'http://x', token: 't', basicAuth: { user: 'u' } }] }), /requires user and password/u);
+
+  const relay = normalizeConfig({
+    relay: { hubUrl: 'https://nas:10443/cloud-control/v1/relay', token: 't', basicAuth: { user: 'u', password: 'p' }, allowInsecureTls: true }
+  });
+  assert.deepEqual(relay.relay.basicAuth, { user: 'u', password: 'p' });
+  assert.equal(relay.relay.allowInsecureTls, true);
+});
+
 test('rejects an unknown role', () => {
   assert.throws(() => normalizeConfig({ role: 'server' }), /role must be one of/u);
 });

@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bearerOf, resolveSecret, sourceAllowed, tokenMatches } from '../lib/auth.mjs';
+import { authHeaders, bearerOf, resolveSecret, sourceAllowed, tokenMatches, tokenOf } from '../lib/auth.mjs';
+
+test('prefers the dedicated token header and falls back to bearer', () => {
+  assert.equal(tokenOf({ headers: { 'x-cloud-control-token': 'dedicated' } }), 'dedicated');
+  assert.equal(tokenOf({ headers: { 'x-cloud-control-token': 'dedicated', authorization: 'Basic abc' } }), 'dedicated');
+  assert.equal(tokenOf({ headers: { 'x-cloud-control-token': '  ', authorization: 'Bearer fallback' } }), 'fallback');
+  assert.equal(tokenOf({ headers: {} }), undefined);
+  assert.equal(tokenOf({ headers: new Headers({ 'x-cloud-control-token': 'web' }) }), 'web');
+});
+
+test('builds outgoing credentials beside a reverse proxy Basic auth', () => {
+  assert.deepEqual(authHeaders('shared', undefined), { 'x-cloud-control-token': 'shared' });
+  const withBasic = authHeaders('shared', { user: 'u', password: 'p' });
+  assert.equal(withBasic['x-cloud-control-token'], 'shared');
+  assert.equal(withBasic.authorization, `Basic ${Buffer.from('u:p').toString('base64')}`);
+});
 
 test('reads a bearer token from Node and Web headers', () => {
   assert.equal(bearerOf({ headers: { authorization: 'Bearer abc' } }), 'abc');
