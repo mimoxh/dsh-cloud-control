@@ -116,55 +116,93 @@ window.__ModuleLoader__.load({
       publicHint: 'Execution happens on the remote DSH; this machine only renders and sends input.'
     };
 
+    /*
+     * The conversation half mirrors the native Conversation page: same layout
+     * variables, radii, type scale and row patterns. Values are copied from the
+     * installed client bundles rather than imported, per the plugin authoring
+     * contract (a client plugin may not require another Harness client package).
+     * Source of the copied values, for the next DSH upgrade:
+     *   .-ja1rG_row/.stack/.bubble  — right-aligned user message (ui-goal)
+     *   .RlGAzG_root/.dock/.card/.input/.row/.primary — composer chrome
+     *   --dsh-chat-content-width    — conversation column (loaded Chat body)
+     */
     const CSS = `
-      .cc-root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);background:transparent;font-size:13px}
-      .cc-head{display:flex;align-items:center;gap:10px;padding:14px 18px 10px;border-bottom:.5px solid var(--dsw-alias-border-l1);flex-wrap:wrap}
-      .cc-head h1{font-size:15px;font-weight:600;margin:0}
-      .cc-sub{color:var(--dsw-alias-label-tertiary);font-size:12px}
-      .cc-spacer{flex:1}
-      .cc-btn{border:0;border-radius:6px;padding:5px 11px;cursor:pointer;background:var(--dsw-alias-fill-l2);color:var(--dsw-alias-label-primary);font-size:12px}
-      .cc-btn:hover{background:var(--dsw-alias-fill-l1)}
+      .cc-root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);background:transparent;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
+      .cc-pad{padding-top:var(--dsh-frame-top-clearance,0px)}
+      .cc-head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px 10px;border-bottom:.5px solid var(--dsw-alias-border-l1)}
+      .cc-head h1{margin:0;font-size:15px;font-weight:600;line-height:22px}
+      .cc-sub{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
+      .cc-spacer{flex:1;min-width:0}
+      .cc-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;font-weight:500;line-height:20px}
+      .cc-btn{border:0;border-radius:var(--dsw-radius-sm);padding:5px 11px;cursor:pointer;background:var(--dsw-alias-button-ghost-active-fill, var(--dsw-alias-interactive-bg-hover));color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:20px;transition:background-color .1s}
+      .cc-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-alias-interactive-bg-hover))}
       .cc-btn:disabled{opacity:.5;cursor:default}
-      .cc-btn-primary{background:var(--dsw-alias-fill-l2)}
-      .cc-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:.5px solid var(--dsw-alias-border-l1)}
-      .cc-tab{border:.5px solid var(--dsw-alias-border-l1);border-radius:999px;padding:4px 12px;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;display:flex;align-items:center;gap:6px}
-      .cc-tab-on{background:var(--dsw-alias-fill-l1);color:var(--dsw-alias-label-primary)}
-      .cc-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-tertiary);display:inline-block;flex:none}
-      .cc-dot-on{background:#3fb950}
-      .cc-dot-err{background:#d29922}
+      .cc-tabs{flex:none;display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:.5px solid var(--dsw-alias-border-l1)}
+      .cc-tab{display:flex;align-items:center;gap:6px;border:.5px solid transparent;border-radius:999px;padding:4px 12px;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px}
+      .cc-tab:hover{background:var(--dsw-alias-interactive-bg-hover)}
+      .cc-tab-on{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-fill-l1);color:var(--dsw-alias-label-primary)}
+      .cc-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-caption);display:inline-block;flex:none}
+      .cc-dot-on{background:var(--dsw-alias-state-success-primary)}
+      .cc-dot-err{background:var(--dsw-alias-state-warn-primary)}
       .cc-body{display:flex;flex:1;min-height:0}
-      .cc-list{width:280px;flex:none;border-right:.5px solid var(--dsw-alias-border-l1);overflow:auto;padding:8px}
-      .cc-group{color:var(--dsw-alias-label-tertiary);font-size:11px;padding:8px 6px 4px;word-break:break-all}
-      .cc-session{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;color:inherit;border-radius:6px;padding:7px 8px;cursor:pointer}
-      .cc-session:hover{background:var(--dsw-alias-fill-l1)}
+      .cc-list{width:264px;flex:none;border-right:.5px solid var(--dsw-alias-border-l1);overflow:auto;padding:8px;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l1);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l1)}
+      .cc-group{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;padding:8px 6px 4px;word-break:break-all}
+      .cc-session{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;color:inherit;border-radius:var(--dsw-radius-sm);padding:6px 8px;cursor:pointer;font:inherit}
+      .cc-session:hover{background:var(--dsw-alias-interactive-bg-hover)}
       .cc-session-on{background:var(--dsw-alias-fill-l2)}
       .cc-session-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .cc-session-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:none}
+      .cc-session-meta{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;flex:none}
       .cc-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
-      .cc-transcript{flex:1;overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px}
-      .cc-msg{max-width:860px;border-radius:8px;padding:8px 12px;background:var(--dsw-alias-fill-l1)}
-      .cc-msg-user{background:var(--dsw-alias-fill-l2);align-self:flex-end;max-width:640px}
-      .cc-role{color:var(--dsw-alias-label-tertiary);font-size:11px;margin-bottom:4px}
-      .cc-text{white-space:pre-wrap;word-break:break-word;line-height:1.55}
-      .cc-tool{border-left:2px solid var(--dsw-alias-border-l1);padding-left:10px;color:var(--dsw-alias-label-secondary)}
-      .cc-tool summary{cursor:pointer;font-size:12px}
-      .cc-tool pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font-size:11px;max-height:260px;overflow:auto}
-      .cc-reasoning{color:var(--dsw-alias-label-tertiary);font-size:12px;margin-top:6px}
-      .cc-reasoning pre{white-space:pre-wrap;margin:4px 0 0}
+      .cc-conversation{display:flex;flex-direction:column;flex:1;min-height:0;padding:0 16px}
+      .cc-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:16px 0 20px;scrollbar-gutter:stable}
+      .cc-turn{display:flex;flex-direction:column;gap:12px;width:100%;max-width:var(--dsh-chat-content-width,920px);margin:0 auto}
+      .cc-row{display:flex;flex-direction:column;gap:6px}
+      .cc-row-user{align-items:flex-end}
+      .cc-stack{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;max-width:100%}
+      .cc-row-user .cc-stack{max-width:min(calc(var(--dsh-chat-content-width,748px) * .702), 82%);align-items:flex-end}
+      .cc-bubble{max-width:100%;overflow-wrap:anywhere;white-space:pre-wrap;border-radius:var(--dsw-radius-xl);background:var(--dsw-specific-bubble);color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));padding:10px 16px}
+      .cc-role{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
+      .cc-text{white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
+      .cc-empty-msg{color:var(--dsw-alias-label-caption)}
+      .cc-note{color:var(--dsw-alias-label-caption);font-size:12px;line-height:18px}
+      .cc-fold{border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-specific-input-major);overflow:hidden}
+      .cc-fold-user{background:var(--dsw-specific-bubble);border-color:transparent;border-radius:var(--dsw-radius-xl);padding:10px 16px}
+      .cc-fold-head{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;font:inherit;font-size:12px;line-height:18px;padding:7px 10px}
+      .cc-fold-user .cc-fold-head{padding:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size,14px)}
+      .cc-fold-head:hover{background:var(--dsw-alias-interactive-bg-hover)}
+      .cc-fold-user .cc-fold-head:hover{background:transparent}
+      .cc-fold-caret{flex:none;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:1}
+      .cc-fold-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .cc-fold-name code{font-family:var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);font-size:12px}
+      .cc-fold-tag{flex:none;color:var(--dsw-alias-label-tertiary)}
+      .cc-fold-body{margin:0;padding:2px 12px 10px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;font-family:var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);max-height:280px;overflow:auto;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l1);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l1)}
+      .cc-fold-user .cc-fold-body{padding:8px 0 0;font-family:inherit;font-size:var(--dsh-content-font-size,14px);line-height:calc(22px + var(--dsh-content-font-delta,0px));color:var(--dsw-alias-label-primary);white-space:pre-wrap}
+      .cc-fold-error{border-color:color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent)}
+      .cc-fold-error .cc-fold-name{color:var(--dsw-alias-state-error-primary)}
+      .cc-fold-running .cc-fold-name{color:var(--dsw-alias-label-primary)}
       .cc-empty{margin:auto;color:var(--dsw-alias-label-tertiary);text-align:center;padding:24px;max-width:460px;line-height:1.6}
-      .cc-error{margin:10px 18px 0;border-radius:6px;padding:8px 12px;background:var(--dsw-alias-fill-l2);color:var(--dsw-alias-label-secondary);display:flex;gap:10px;align-items:center}
-      .cc-error-text{flex:1;min-width:0;word-break:break-word}
-      .cc-composer{border-top:.5px solid var(--dsw-alias-border-l1);padding:10px 18px 14px;display:flex;flex-direction:column;gap:8px}
-      .cc-composer-row{display:flex;gap:8px;align-items:flex-end}
-      .cc-input{flex:1;min-height:56px;max-height:200px;resize:vertical;border:.5px solid var(--dsw-alias-border-l1);border-radius:8px;padding:8px 10px;background:var(--dsw-alias-fill-l1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:1.5}
-      .cc-modes{display:flex;gap:6px;align-items:center;color:var(--dsw-alias-label-tertiary);font-size:11px}
-      .cc-pill{border:.5px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px 10px;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px}
-      .cc-pill-on{background:var(--dsw-alias-fill-l1);color:var(--dsw-alias-label-primary)}
-      .cc-foot{display:flex;gap:8px;align-items:center}
-      .cc-hint{color:var(--dsw-alias-label-tertiary);font-size:11px;flex:1}
-      .cc-title{font-weight:600}
-      .cc-running{color:#3fb950;font-size:11px}
-      .cc-pad{padding-top:var(--dsh-frame-top-clearance,0px)}
+      .cc-error{flex:none;display:flex;align-items:center;gap:10px;margin:10px 16px 0;border:.5px solid var(--dsw-alias-state-error-secondary);border-radius:var(--dsw-radius-md);padding:8px 12px;background:var(--dsw-alias-fill-l1);color:var(--dsw-alias-label-secondary)}
+      .cc-error-text{flex:1;min-width:0;word-break:break-word;font-size:13px;line-height:20px}
+      .cc-composer{flex:none;display:flex;flex-direction:column;align-items:center;padding:0 var(--dsh-composer-side-clearance,16px) 4px}
+      .cc-dock{display:flex;align-items:center;justify-content:center;gap:12px;max-width:100%;padding-top:4px}
+      .cc-dock:empty{display:none}
+      .cc-dock-mode{height:28px;max-width:160px;border:0;outline:none;appearance:none;cursor:pointer;border-radius:var(--dsw-radius-sm);background-color:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;font-weight:500;line-height:20px;padding:0 8px}
+      .cc-dock-mode:hover:not(:disabled){background-color:var(--dsw-alias-interactive-bg-hover)}
+      .cc-dock-mode:disabled{opacity:.5;cursor:default}
+      .cc-card{box-sizing:border-box;position:relative;display:flex;flex-direction:column;gap:12px;width:100%;max-width:var(--dsh-composer-card-max-width,calc(var(--dsh-chat-content-width,748px) + 32px));border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));padding-top:8px}
+      .cc-input{box-sizing:border-box;display:block;width:100%;min-height:52px;max-height:200px;margin:0;padding:4px 8px 0 14px;resize:none;border:0;outline:none;background:transparent;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);font:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+      .cc-input::placeholder{color:var(--dsw-alias-label-caption)}
+      .cc-input:disabled{cursor:not-allowed;color:var(--dsw-alias-label-tertiary)}
+      .cc-inputrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:2px 8px 6px}
+      .cc-modes{display:flex;align-items:center;gap:12px;min-width:0}
+      .cc-pill{display:inline-flex;align-items:center;height:26px;border:0;border-radius:999px;padding:0 10px;cursor:pointer;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px}
+      .cc-pill:hover{background:var(--dsw-alias-interactive-bg-hover)}
+      .cc-pill-on{background:var(--dsw-alias-fill-l2);color:var(--dsw-alias-label-primary)}
+      .cc-pill-stop{color:var(--dsw-alias-state-error-primary)}
+      .cc-primary{display:grid;place-items:center;flex:none;width:34px;height:34px;border:0;border-radius:999px;cursor:pointer;background:var(--dsw-alias-button-info-fill);color:var(--dsw-alias-label-primary-foreground);transition:background-color .1s}
+      .cc-primary:hover:not(:disabled){background:var(--dsw-alias-button-info-hover)}
+      .cc-primary:disabled{opacity:.4;cursor:default}
+      .cc-hint{width:100%;max-width:var(--dsh-composer-card-max-width,calc(var(--dsh-chat-content-width,748px) + 32px));padding-top:6px;color:var(--dsw-alias-label-caption);font-size:12px;line-height:18px}
     `;
 
     if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="dsh-cloud-control/client.js"]') === null) {
@@ -228,6 +266,17 @@ window.__ModuleLoader__.load({
         h('circle', { cx: 10.5, cy: 8, r: 3, fill: 'none', stroke: 'currentColor', strokeWidth: 1.4 }));
     }
 
+    /** Send glyph for the composer's primary button (artwork, not a themed surface). */
+    function SendIcon() {
+      return h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+        h('path', {
+          d: 'M14 8 2.6 2.2a.4.4 0 0 0-.55.47l1.5 5.06a.4.4 0 0 0 .33.27H9a.4.4 0 0 1 0 .8H3.88a.4.4 0 0 0-.33.27l-1.5 5.06a.4.4 0 0 0 .55.47Z',
+          stroke: 'currentColor',
+          strokeWidth: 1.3,
+          strokeLinejoin: 'round'
+        }));
+    }
+
     /** Fallback panel-info hook so the component keeps one hook shape. */
     function useFallbackPanelInfo(selector) {
       return React.useMemo(() => selector({ activePanelId: PANEL_ID }), [selector]);
@@ -257,6 +306,7 @@ window.__ModuleLoader__.load({
       const [mode, setMode] = React.useState('queue');
       const [sending, setSending] = React.useState(false);
       const [notice, setNotice] = React.useState(undefined);
+      const [composerExpanded, setComposerExpanded] = React.useState(false);
       const [version, setVersion] = React.useState(0);
       const transcriptRef = React.useRef(null);
       const stickToBottom = React.useRef(true);
@@ -537,54 +587,123 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'cc-main' },
                   h('div', { className: 'cc-head' },
                     h('span', { className: 'cc-title' }, heading),
-                    running ? h('span', { className: 'cc-running' }, t('running')) : null,
+                    running ? h('span', { className: 'cc-sub' }, t('running')) : null,
                     h('span', { className: 'cc-spacer' }),
                     latest.hasMore || older.hasMore
                       ? h('button', { className: 'cc-btn', type: 'button', onClick: loadOlder, disabled: older.loading }, older.loading ? t('loading') : t('loadOlder'))
                       : null),
-                  h('div', { className: 'cc-transcript', ref: transcriptRef, onScroll: onTranscriptScroll },
-                    sessionId === undefined
-                      ? h('div', { className: 'cc-empty' }, t('selectSession'))
-                      : rows.length === 0
+                  h('div', { className: 'cc-conversation' },
+                    h('div', { className: 'cc-scroll', ref: transcriptRef, onScroll: onTranscriptScroll },
+                      sessionId === undefined || rows.length === 0
                         ? h('div', { className: 'cc-empty' }, t('selectSession'))
-                        : rows.map((row) => h(Row, { key: row.seq, row, t }))),
+                        : buildTurns(rows).map((turn) => h(Turn, { key: turn.key, turn, t })))),
                   h('div', { className: 'cc-composer' },
-                    h('div', { className: 'cc-composer-row' },
+                    h('div', { className: 'cc-dock' },
+                      h('button', {
+                        type: 'button',
+                        className: `cc-dock-mode${mode === 'steer' ? ' cc-pill-on' : ''}`,
+                        title: t('composerPlaceholder'),
+                        onClick: () => setMode(mode === 'queue' ? 'steer' : 'queue'),
+                        disabled: sessionId === undefined
+                      }, mode === 'steer' ? t('steerMode') : t('queueMode'))),
+                    h('div', { className: 'cc-card' },
                       h('textarea', {
                         className: 'cc-input',
                         value: draft,
                         placeholder: t('composerPlaceholder'),
-                        onChange: (event) => setDraft(event.target.value),
+                        rows: 2,
+                        onChange: (event) => {
+                          setDraft(event.target.value);
+                          setComposerExpanded(event.target.value.trim().length > 0);
+                        },
                         onKeyDown: onComposerKey,
+                        onFocus: () => setComposerExpanded(true),
                         disabled: sessionId === undefined
                       }),
-                      h('button', { className: 'cc-btn cc-btn-primary', type: 'button', onClick: () => void send(), disabled: sending || sessionId === undefined }, sending ? t('sending') : t('send'))),
-                    h('div', { className: 'cc-foot' },
-                      h('div', { className: 'cc-modes' },
-                        h('button', { type: 'button', className: `cc-pill${mode === 'queue' ? ' cc-pill-on' : ''}`, onClick: () => setMode('queue') }, t('queueMode')),
-                        h('button', { type: 'button', className: `cc-pill${mode === 'steer' ? ' cc-pill-on' : ''}`, onClick: () => setMode('steer') }, t('steerMode')),
-                        running
-                          ? h('button', { type: 'button', className: 'cc-pill', onClick: () => void stop() }, t('stop'))
-                          : null),
-                      h('span', { className: 'cc-hint' }, t('publicHint'))))))));
+                      h('div', { className: 'cc-inputrow' },
+                        h('div', { className: 'cc-modes' },
+                          running
+                            ? h('button', { type: 'button', className: 'cc-pill cc-pill-stop', onClick: () => void stop() }, t('stop'))
+                            : null),
+                        h('div', { className: 'cc-modes' },
+                          h('button', {
+                            type: 'button',
+                            className: 'cc-primary',
+                            'aria-label': t('send'),
+                            title: t('send'),
+                            onClick: () => void send(),
+                            disabled: sending || sessionId === undefined || draft.trim().length === 0
+                          }, h(SendIcon)))),
+                      composerExpanded || running || sending
+                        ? h('div', { className: 'cc-hint' }, sessionId === undefined ? t('selectSession') : t('publicHint'))
+                        : null))))));
     }
 
     /**
-     * One transcript row: user/assistant message or a collapsible tool record.
+     * One conversation turn: the user message that opened it plus every row the
+     * remote Host produced while answering. Mirrors the native Conversation
+     * page, where a turn is the unit the reader follows.
+     */
+    function Turn({ turn, t }) {
+      return h('div', { className: 'cc-turn', 'data-cc-turn': turn.key },
+        turn.rows.map((row) => h(Row, { key: row.seq, row, t })));
+    }
+
+    /**
+     * One non-user transcript row: an assistant message (optionally carrying its
+     * reasoning) or a collapsible tool record. Tool results pair with the
+     * preceding call through the shared name, so they start collapsed.
      */
     function Row({ row, t }) {
       if (row.role === 'tool') {
-        const label = row.kind === 'result' ? t('toolResult') : t('tool');
-        return h('details', { className: 'cc-tool' },
-          h('summary', null, `${label}: ${row.name}${row.error ? ' (error)' : ''}`),
-          h('pre', null, row.text));
+        const result = row.kind === 'result';
+        const classes = ['cc-fold'];
+        if (row.error) classes.push('cc-fold-error');
+        if (result) classes.push('cc-fold-running');
+        return h('details', { className: classes.join(' '), 'data-cc-row': 'tool' },
+          h('summary', { className: 'cc-fold-head' },
+            h('span', { className: 'cc-fold-caret', 'aria-hidden': true }, '▸'),
+            h('span', { className: 'cc-fold-name' }, h('code', null, row.name ?? t('tool'))),
+            h('span', { className: 'cc-fold-tag' }, `${result ? t('toolResult') : t('tool')}${row.error ? ` · ${t('error')}` : ''}`)),
+          h('pre', { className: 'cc-fold-body' }, row.text.length > 0 ? row.text : t('emptyMessage')));
       }
-      return h('div', { className: `cc-msg cc-msg-${row.role}` },
-        h('div', { className: 'cc-role' }, row.role === 'user' ? t('user') : t('assistant')),
-        row.reasoning
-          ? h('details', { className: 'cc-reasoning' }, h('summary', null, t('reasoning')), h('pre', null, row.reasoning))
-          : null,
-        h('div', { className: 'cc-text' }, row.text.length > 0 ? row.text : t('emptyMessage')));
+      const assistant = row.role === 'assistant';
+      return h('div', { className: `cc-row cc-row-${row.role}`, 'data-cc-row': row.role },
+        h('div', { className: 'cc-stack' },
+          assistant
+            ? h('div', { className: 'cc-text' }, row.reasoning
+                ? h('details', { className: 'cc-fold', 'data-cc-row': 'reasoning' },
+                    h('summary', { className: 'cc-fold-head' },
+                      h('span', { className: 'cc-fold-caret', 'aria-hidden': true }, '▸'),
+                      h('span', { className: 'cc-fold-name' }, t('reasoning'))),
+                    h('pre', { className: 'cc-fold-body' }, row.reasoning))
+                : null,
+              row.text.length > 0 ? row.text : h('span', { className: 'cc-empty-msg' }, t('emptyMessage')),
+              row.interrupted ? h('span', { className: 'cc-note' }, t('cancelled')) : null)
+            : h('div', { className: 'cc-bubble' },
+                h('span', { className: 'cc-role' }, `${t('user')} · `),
+                row.text.length > 0 ? row.text : h('span', { className: 'cc-empty-msg' }, t('emptyMessage')))));
+    }
+
+    /**
+     * Group rows into turns: each user message opens a turn, and rows that
+     * arrive before any user message (truncated history) form their own leading
+     * turn.
+     *
+     * @param {Array<{seq: number, role: string}>} rows - chronological rows.
+     * @returns {Array<{key: number|string, rows: Array<object>}>} the turns.
+     */
+    function buildTurns(rows) {
+      const turns = [];
+      let current;
+      for (const row of rows) {
+        if (current === undefined || row.role === 'user') {
+          current = { key: row.role === 'user' ? row.seq : `pre-${String(row.seq)}`, rows: [] };
+          turns.push(current);
+        }
+        current.rows.push(row);
+      }
+      return turns;
     }
 
     /**

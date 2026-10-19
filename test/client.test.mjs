@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 /**
  * Headless smoke test for the browser half.
@@ -11,6 +12,18 @@ import assert from 'node:assert/strict';
  * panel until it settles. It catches render-time faults, wrong request URLs and
  * broken data flow without a browser or the Harness runtime.
  */
+
+// The panel schedules polling timers that React cleanups clear on unmount. This
+// harness has no unmount phase, so the final pass's timers stay pending and
+// would hold the test process open forever: make every timer non-blocking once,
+// module-wide. `unref` exists on Node timers and is absent in a browser, so this
+// stays a no-op when the same code runs elsewhere.
+const nativeSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (fn, ms, ...rest) => {
+  const handle = nativeSetTimeout(fn, ms, ...rest);
+  handle?.unref?.();
+  return handle;
+};
 
 /** Collected builder for the mini runtime. */
 function createMiniReact() {
@@ -110,13 +123,17 @@ function createMiniReact() {
       for (const effect of effects) {
         const record = effect.store.hooks[effect.index];
         if (record !== undefined && same(record.deps, effect.deps)) continue;
+        // React contract: the previous run's cleanup settles before the body
+        // runs again. Without this the polling loops of earlier passes keep
+        // their timers, and the test process never drains.
+        if (record !== undefined && typeof record.cleanup === 'function') record.cleanup();
         effect.store.hooks[effect.index] = { deps: effect.deps };
         const cleanup = effect.fn();
         if (typeof cleanup === 'function') effect.store.hooks[effect.index].cleanup = cleanup;
       }
       await settle();
     },
-    /** Run every mounted effect's cleanup so polling timers stop. */
+    /** Run every mounted effect's cleanup so polling stops deterministically. */
     dispose() {
       for (const store of stores.values()) {
         for (const hook of store.hooks) {
@@ -144,6 +161,25 @@ function textOf(node) {
   if (typeof node === 'string' || typeof node === 'number') return `${node} `;
   if (Array.isArray(node)) return node.map(textOf).join('');
   return textOf(node.props?.children);
+}
+
+/**
+ * Collect every element in an expanded tree, so structural claims about the
+ * conversation half can be asserted without a DOM.
+ *
+ * @param {unknown} node - expanded tree.
+ * @returns {Array<{type: unknown, props: Record<string, unknown>}>} the elements.
+ */
+function elementsOf(node) {
+  if (node === null || node === undefined || typeof node !== 'object') return [];
+  if (Array.isArray(node)) return node.flatMap(elementsOf);
+  const self = typeof node.type === 'string' ? [{ type: node.type, props: node.props ?? {} }] : [];
+  return [...self, ...elementsOf(node.props?.children)];
+}
+
+/** @param {Record<string, unknown>} props - element props. @returns {string} its class list. */
+function classOf(props) {
+  return typeof props.className === 'string' ? props.className : '';
 }
 
 test('client bundle renders peer, sessions and transcript from controller answers', async () => {
@@ -253,12 +289,21 @@ test('client bundle renders peer, sessions and transcript from controller answer
     usePanelInfo: (selector) => selector({ activePanelId: 'cloud-control' })
   };
 
+  // Settle the data effects: each pass renders the tree, then runs that tree's
+  // effects. The data flow is two-step (sessions arrive, that selects a session,
+  // then history arrives), so assert on the first render whose data is both
+  // present and stable — never on a pre-effect render, which still shows the
+  // empty state.
   let tree;
   for (let pass = 0; pass < 8; pass += 1) {
     const rendered = mini.render(panel.component, props);
-    tree = rendered.tree;
     await mini.run(rendered.effects);
-    if (!mini.dirty) break;
+    const settled = textOf(rendered.tree);
+    if (settled.includes('请修复构建') && settled.includes('收到，正在检查')) {
+      tree = rendered.tree;
+      break;
+    }
+    tree = rendered.tree;
   }
 
   const text = textOf(tree);
@@ -271,5 +316,66 @@ test('client bundle renders peer, sessions and transcript from controller answer
   assert.ok(calls.every((call) => call.url.startsWith('http://127.0.0.1:39180/api/cloud-control/')), 'panel must call only its own controller routes');
   assert.ok(calls.some((call) => call.url.includes('/sessions?peer=nas')));
   assert.ok(calls.some((call) => call.url.includes('/history?peer=nas')));
+
+  // The conversation half mirrors the native page: turns group rows, user text
+  // sits in a right-aligned bubble, assistant text is plain, and tool records
+  // are collapsible rows rather than the old free-form bubbles.
+  const elements = elementsOf(tree);
+  const classLists = elements.map((element) => classOf(element.props));
+  const hasClass = (name) => classLists.some((list) => list.split(/\s+/u).includes(name));
+  assert.ok(hasClass('cc-conversation'), 'the conversation column must exist');
+  assert.ok(hasClass('cc-scroll'), 'the transcript must be the scroll viewport');
+  assert.ok(hasClass('cc-turn'), 'rows must be grouped into turns');
+  assert.ok(hasClass('cc-bubble'), 'the user message must render as a bubble');
+  assert.ok(hasClass('cc-row-user'), 'the user row must carry its own layout hook');
+  assert.ok(hasClass('cc-row-assistant'), 'the assistant row must carry its own layout hook');
+
+  const reasoning = elements.find((element) => element.type === 'details' && classOf(element.props).includes('cc-fold'));
+  assert.ok(reasoning !== undefined, 'reasoning must render as a collapsible row');
+
+  const toolRows = elements.filter((element) => element.type === 'details' && element.props['data-cc-row'] === 'tool');
+  assert.equal(toolRows.length, 1, 'a tool record must render as one collapsible row');
+  assert.ok(
+    classOf(toolRows[0].props).split(/\s+/u).includes('cc-fold'),
+    'the tool row must use the shared fold chrome'
+  );
+
+  // The composer is the native card: one input plus a primary send control.
+  assert.ok(hasClass('cc-card'), 'the composer must render as the native card');
+  assert.ok(hasClass('cc-primary'), 'the composer must expose a primary send button');
+  const send = elements.find((element) => element.type === 'button' && element.props['aria-label'] === '发送');
+  assert.ok(send !== undefined, 'the send control must be labelled for assistive tech');
+  assert.equal(send.props.disabled, true, 'an empty draft must not submit');
+  const textarea = elements.find((element) => element.type === 'textarea');
+  assert.ok(textarea !== undefined, 'the composer must keep a text input');
+  assert.equal(textarea.props.disabled, false, 'a selected session must accept input');
+
   mini.dispose();
+});
+
+test('panel styles with theme tokens only, never literal colours', async () => {
+  const source = await readFile(new URL('../client.js', import.meta.url), 'utf8');
+
+  // The plugin authoring contract: literal colours are for artwork only. The two
+  // icon components draw the sidebar glyph and the send arrow, so hex/rgb
+  // literals may only appear inside their bodies.
+  const artwork = source
+    .replace(/function PanelIcon[\s\S]*?\n    \}/u, '')
+    .replace(/function SendIcon[\s\S]*?\n    \}/u, '');
+  const literals = [...artwork.matchAll(/#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/gu)].map((match) => match[0]);
+  assert.deepEqual(literals, [], `theme tokens are required outside artwork, found ${JSON.stringify(literals)}`);
+
+  // The structural mirror depends on these tokens existing; keep the list explicit.
+  for (const token of [
+    '--dsw-radius-panel',
+    '--dsw-radius-xl',
+    '--dsw-elevation-soft',
+    '--dsw-specific-input-major',
+    '--dsw-specific-bubble',
+    '--dsw-alias-label-caption',
+    '--dsw-alias-interactive-bg-hover'
+  ]) {
+    assert.ok(source.includes(`var(${token}`), `${token} must style the mirrored chrome`);
+  }
+  assert.ok(source.includes('--dsh-chat-content-width'), 'the conversation column must follow the host width variable');
 });

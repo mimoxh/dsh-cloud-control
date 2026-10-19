@@ -192,7 +192,13 @@ node test/manifest.test.mjs
 # 本地起一个带插件的临时实例（.dev/overlay.yml 用绝对路径挂载工作树）
 $env:DSH_HOME="$PWD/.devhome"
 dsh ccdev --from-default-profile web --patch .dev/overlay.yml --no-open --port 39180
+
+# 面板外观预览：不需要 Host / 登录 / 对端，直接开生成的静态页
+node .dev/preview-server.mjs --write   # 生成 .dev/panel-preview-{light,dark}.html
+node .dev/preview-server.mjs 39181     # 或起一个预览服务（可切换 ?theme=dark）
 ```
+
+面板的会话区**刻意与原生会话页同构**：布局变量（`--dsh-chat-content-width`、`--dsh-composer-card-max-width`、`--dsh-content-font-size`）、圆角、投影与行节奏都照抄自安装包内客户端的样式，只用 `--dsw-alias-*` / `--dsw-specific-*` 令牌。按插件撰写规范，客户端插件**不得** `require` 其他 Harness 客户端包（会随版本变动、且抛错会清空插槽），所以这里是"抄标记与样式"而不是"引组件"；`client.js` 顶部注释记录了每个值的来源，升级 DSH 后照它重新对一次即可。`node .dev/check-classes.mjs` 会校验"标记里用到的类都有样式、样式里的类都被用到、字面色只出现在图标里"。
 
 `.dev/overlay-spoke.yml` 是第二个实例（spoke）的配置，用来本地验证中继；`.dev/`、`.devhome*/` 均已 gitignore。
 
