@@ -31,14 +31,20 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 ### 1. 装到 NAS（1Panel / 容器内可执行命令）
 
-```sh
-# 本机打包（零依赖，离线可打）
-pnpm pack          # 产出 dsh-cloud-control-0.1.0.tgz
+两种来源，任选其一：
 
-# 拷进容器并安装
+```sh
+# 方式 A：GitHub 直装（本插件无构建步骤，不需要 prepare / allowBuilds 授权）
+docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#v0.1.0'
+
+# 方式 B：本机打包后拷进容器（离线可用，最稳）
+pnpm pack          # 产出 dsh-cloud-control-0.1.0.tgz
 docker cp dsh-cloud-control-0.1.0.tgz <容器名>:/tmp/
 docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.0.tgz'
 ```
+
+> GitHub 方式依赖容器能访问 github.com（管理器在安装前会做一次 `git ls-remote`，默认 5s 超时）；不通就用方式 B。
+> 务必带上 `#v0.1.0`（或 `#<commit>`）锁版本，否则每次重装都会拉默认分支。
 
 编辑容器内 `$DSH_HOME/profiles/web/cordis.patch.yml`（`$DSH_HOME` 默认 `~/.dsh`）：
 
