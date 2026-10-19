@@ -67,17 +67,9 @@ NAS (192.168.1.10:10443, Caddy → DSH web)          Windows Desktop (DSH Deskto
 
 ## 4. 升级与配置步骤
 
-当前本机安装：`C:\Users\16617\.dsh\profiles\desktop\node_modules\dsh-cloud-control`，
-来自 `github:mimoxh/dsh-cloud-control`；与工作树仅 `lib/http-client.mjs` 不同（工作树多 `isNamedHost()`
-IP-literal SNI 修复，即 `19a0d5d`）。**升级必须锁 ref**：
-
-```powershell
-# 桌面（Electron 独占 desktop profile，用设置→插件→安装，或让 agent 用 plugin_manager.install_bundle）
-# NAS（容器内）
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#<commit-or-tag>'
-# 离线：pnpm pack; docker cp dsh-cloud-control-0.1.0.tgz <容器名>:/tmp/
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.0.tgz'
-```
+> 本节是当时的调查记录。**现行的安装与升级步骤以 [UPGRADING.md](../UPGRADING.md) 为准**，
+> 这里只保留当时确认过的事实：插件以 `github:mimoxh/dsh-cloud-control` 装进 desktop profile，
+> 升级必须锁 ref（`#v<版本>` 或 `#<commit>`）。
 
 NAS 侧 `$DSH_HOME/profiles/web/cordis.patch.yml`（patch 层是**整份替换 config**，改一层就把该层字段写全）：
 

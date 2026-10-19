@@ -1,6 +1,6 @@
-# 升级到 0.1.2
+# 升级到 0.1.3
 
-0.1.2 修掉了一个会**让整个远端会话功能失效**的缺陷，并把面板的会话区改成原生观感。
+0.1.3 修掉了一个会**让整个远端会话功能失效**的缺陷，并把面板的会话区改成原生观感。
 **两端都要更新**——NAS 与本机各自运行一份插件，各自负责自己的会话。
 
 | 改动 | 影响谁 |
@@ -41,10 +41,10 @@ docker exec -it <容器名> sh -lc 'ls -l $DSH_HOME/profiles/web/node_modules/ds
 **方式 1：GitHub 直装（容器能出网时最省事）**
 
 ```sh
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#v0.1.2'
+docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#v0.1.3'
 ```
 
-> 一定要带 `#v0.1.2`。不带版本会拉默认分支，每次重装结果都可能不同。
+> 一定要带 `#v0.1.3`。不带版本会拉默认分支，每次重装结果都可能不同。
 > 管理器安装前会做一次 `git ls-remote`（默认 5s 超时），容器不能出网就换方式 2。
 
 **方式 2：离线 tgz（最稳，推荐）**
@@ -52,10 +52,10 @@ docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/d
 在本机仓库根目录打包（不需要 npm/pnpm，也不写任何全局缓存）：
 
 ```powershell
-node .dev/pack.mjs          # 产出 dsh-cloud-control-0.1.2.tgz（23 个文件）
+node .dev/pack.mjs          # 产出 dsh-cloud-control-0.1.3.tgz（23 个文件）
 node .dev/verify-pack.mjs   # 校验：与工作树逐字节一致（应输出 PACK OK）
-docker cp dsh-cloud-control-0.1.2.tgz <容器名>:/tmp/
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.2.tgz'
+docker cp dsh-cloud-control-0.1.3.tgz <容器名>:/tmp/
+docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.3.tgz'
 ```
 
 **方式 3：只换文件（不想动插件管理器时）**
@@ -144,7 +144,7 @@ desktop profile 由 Electron 独占，CLI 不接管，所以用 **设置 → 插
 node .dev/probe-raw.mjs
 ```
 
-期望：`GET /cloud-control/v1/health` 返回 `"pluginVersion":"0.1.2"`。
+期望：`GET /cloud-control/v1/health` 返回 `"pluginVersion":"0.1.3"`。
 若仍是 `0.1.0`，说明 NAS 没装上新版本。
 
 **2. 回环桥是否修好（关键）**

@@ -18,6 +18,11 @@ NAS DSH Host
 
 - 不修改 DSH 源码，不写 profile 的 `package.json`，插件零运行时依赖（只用 Node 内置模块）。
 - 会话数据面复用官方 Remote 面：`session/list`、`session/projections`、`session/page`、`session/prompt`、`session/cancel`。
+- 面板的会话区**与原生会话页同构**（同一批布局变量、圆角、投影、行节奏），只用主题令牌着色；
+  详见「开发」一节。
+- 对端 Host 调自己的 API 需要一个 loopback origin：优先 `ctx.webServer.getOrigin()`，失败时回退
+  `protocol`/`port`/`host`，最后读绑定 socket；每一级失败都会把底层原因写进错误信息，不再用一句
+  固定文案把问题盖住。
 
 ## 快速开始
 
@@ -35,16 +40,19 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 ```sh
 # 方式 A：GitHub 直装（本插件无构建步骤，不需要 prepare / allowBuilds 授权）
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#v0.1.0'
+docker exec -it <容器名> sh -lc 'dsh plugin --profile web add github:mimoxh/dsh-cloud-control#v0.1.3'
 
-# 方式 B：本机打包后拷进容器（离线可用，最稳）
-pnpm pack          # 产出 dsh-cloud-control-0.1.0.tgz
-docker cp dsh-cloud-control-0.1.0.tgz <容器名>:/tmp/
-docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.0.tgz'
+# 方式 B：离线包（容器不能访问 github.com 时用，最稳）
+#   在本仓库根目录生成 tgz——不需要 npm/pnpm，也不写全局缓存
+node .dev/pack.mjs          # 产出 dsh-cloud-control-0.1.3.tgz（23 个文件）
+node .dev/verify-pack.mjs   # 校验归档与工作树逐字节一致（应输出 PACK OK）
+docker cp dsh-cloud-control-0.1.3.tgz <容器名>:/tmp/
+docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-control-0.1.3.tgz'
 ```
 
 > GitHub 方式依赖容器能访问 github.com（管理器在安装前会做一次 `git ls-remote`，默认 5s 超时）；不通就用方式 B。
-> 务必带上 `#v0.1.0`（或 `#<commit>`）锁版本，否则每次重装都会拉默认分支。
+> 务必带上 `#v0.1.3`（或 `#<commit>`）锁版本，否则每次重装都会拉默认分支。
+> Release 附件里也有同一个 tgz：<https://github.com/mimoxh/dsh-cloud-control/releases/tag/v0.1.3>。
 
 编辑容器内 `$DSH_HOME/profiles/web/cordis.patch.yml`（`$DSH_HOME` 默认 `~/.dsh`）：
 
@@ -74,6 +82,14 @@ docker exec -it <容器名> sh -lc 'dsh plugin --profile web add /tmp/dsh-cloud-
 
 desktop profile 由 Electron 独占，CLI 不接管，请用 **设置 → 插件 → 安装**（或让会话里的 agent 用 `plugin_manager` 的 `install_bundle`，target 传本目录的绝对路径）。
 
+安装框接受任意 pnpm 源，所以可以直接粘地址：
+
+```
+github:mimoxh/dsh-cloud-control#v0.1.3
+```
+
+关于「在插件页面里更新」：管理器只对 catalog 里有 `installTarget` 的包显示「可更新」徽标，GitHub 直装的包**不会**出现该徽标，需要手动再粘一次带新 ref 的地址（同名会原地替换，不会装出两份）。另外要分清**谁在联网**——在 NAS 的插件页操作时，跑 pnpm 的是容器；容器不能出网就先把 tgz `docker cp` 进容器，再在安装框填容器内路径（如 `/tmp/dsh-cloud-control-0.1.3.tgz`）。
+
 然后在 `C:\Users\<你>\.dsh\profiles\desktop\cordis.patch.yml` 加：
 
 ```yaml
@@ -99,7 +115,13 @@ desktop profile 由 Electron 独占，CLI 不接管，请用 **设置 → 插件
     maxMessages: 60
 ```
 
-重启桌面应用后，侧边栏会出现「云控台」入口，主面板里能看到对端会话、对话和输入框。
+重启桌面应用后，侧边栏会出现「云控台」入口。面板左侧是**按工作目录分组**的对端会话列表，
+右侧是会话区：消息按「轮」分组，用户消息是右对齐气泡，助手正文全宽，推理与工具调用是
+可折叠行（工具结果默认收起、失败标红），底部是原生样式的输入卡片与圆形发送键。
+
+> **两端都要装**：每台机器各跑一份插件，各自负责自己的会话。NAS 面板读桌面的会话走的是
+> **桌面**那份插件的回环桥，反之亦然；只装一端只有一个方向能通。升级步骤与验证清单见
+> [UPGRADING.md](./UPGRADING.md)。
 
 ## 配置参考
 
@@ -150,17 +172,26 @@ peers:
 ```sh
 # 端点存活 + 版本（反代带 Basic Auth 时加 -u，自签证书加 -k）
 curl -s -k -u admin:pass -H "X-Cloud-Control-Token: $TOKEN" https://<NAS>:10443/cloud-control/v1/health
+# 期望："pluginVersion":"0.1.3"
 
 # 直接读一次会话列表
 curl -s -k -u admin:pass -H "X-Cloud-Control-Token: $TOKEN" -H 'content-type: application/json' \
   -d '{"method":"session/list","payload":{"args":{"_request":{}}}}' \
   https://<NAS>:10443/cloud-control/v1/rpc
+# 期望：HTTP 200 且带 {"ok":true,"response":{"type":"server-response",...}}
 
 # 负例：无 token → 401；白名单外方法 → 403
 curl -s -k -u admin:pass -o /dev/null -w '%{http_code}\n' https://<NAS>:10443/cloud-control/v1/health
 ```
 
+> Windows 自带的 `curl` 走 schannel，访问自签证书端点会报
+> `schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS`。改用 Node 探针
+> （`node .dev/probe-raw.mjs`，仅在开发工作树里可用）或在 Linux/容器内执行上面的 curl。
+
 面板链路（本机浏览器 Cookie）：打开 DSH → 侧边栏「云控台」→ 选择对端 → 选择会话。
+若 `/rpc` 返回 HTTP 500，响应体里的 `error.code` / `message` 就是原因：`not-ready` 表示对端
+读不到自己的监听地址（0.1.3 起会把底层原因一并写出来），`unauthorized` 表示令牌或反代凭证
+不对，`method-not-allowed` 表示该方法不在 `endpoint.allowMethods` 里。
 
 ## 安全边界
 
@@ -168,15 +199,20 @@ curl -s -k -u admin:pass -o /dev/null -w '%{http_code}\n' https://<NAS>:10443/cl
 - endpoint 路由不走 DSH 的 Host/Origin 栅栏（`ctx.webServer` 本身不做鉴权），**鉴权全部由本插件负责**：常量时间比较、可选来源白名单、方法白名单、体积/超时上限。
 - 对端 Cookie / launch token 只在各自进程内使用，不会跨机传递，也不会写进日志。
 - 中继只由 spoke 出站发起，hub 不新开任何端口；请求带 TTL，spoke 掉线不会挂死调用方。
+- **不要用反代的 Basic Auth 当唯一防线**：如果对端 DSH 监听的端口被反代暴露出去，任何人都能直接
+  打它的 `/api/*`（实测某 NAS 部署在该路径上**不带任何 Cookie/API 凭证也返回 200**），从而以
+  owner 身份读写会话，完全绕过本插件的共享 token。请把该端口限制在可信网络，并只让
+  `/cloud-control/v1/*` 这一个前缀对需要它的机器可见。
 
 ## 已知限制（v1）
 
-- 没有 token 级流式：面板按 `pollIntervalMs` 轮询最新窗口（可见时才轮询）。
+- 没有 token 级流式：面板按 `pollIntervalMs` 轮询最新窗口（可见时才轮询）。轮询能看到工具调用与步骤推进，但助手正文要等该次 attempt 落盘后才整段出现；逐字跟随需要官方的 `session/follow` 流，而它只走 `/api/remote.mux` WebSocket，当前的一元转发面承载不了。
 - 只支持文本输入：图片/附件、斜杠命令、终端、plan/goal 面板不在本期。
 - 不能在远端新建会话；只读+续用已存在的会话。
 - 子会话（subagent）行会被过滤掉，只显示根会话。
 - 会话 cursor 依赖 `session/projections`：极少数没有任何投影的冷会话会返回 `no-cursor`。
 - 若对端会话正被另一个写者持有，`session/prompt` 会返回 `session/writer-held`（原样透传到面板）。
+- 面板是**外观**与原生会话页同构，不是真的把它挂进原生会话列表：远端会话不会出现在侧栏的 workspace 树里，原生搜索/置顶/归档也作用不到它（那些走本地 Session Controller）。原因见 `docs/feasibility-remote-conversation.md`。
 
 ## 开发
 
@@ -188,6 +224,12 @@ node test/relay.test.mjs
 node test/transcript.test.mjs
 node test/client.test.mjs     # 用迷你 React + 假 fetch 渲染面板
 node test/manifest.test.mjs
+node test/http-client.test.mjs
+node test/local-rpc.test.mjs  # 回环桥：origin 三级解析 + 凭据交换 + 信封校验
+
+# 静态护栏
+node .dev/check-classes.mjs   # 标记用到的类都有样式、样式里的类都被用到、字面色只在图标里
+node .dev/check-tokens.mjs    # 面板引用的主题令牌都存在于宿主样式表
 
 # 本地起一个带插件的临时实例（.dev/overlay.yml 用绝对路径挂载工作树）
 $env:DSH_HOME="$PWD/.devhome"
@@ -196,6 +238,10 @@ dsh ccdev --from-default-profile web --patch .dev/overlay.yml --no-open --port 3
 # 面板外观预览：不需要 Host / 登录 / 对端，直接开生成的静态页
 node .dev/preview-server.mjs --write   # 生成 .dev/panel-preview-{light,dark}.html
 node .dev/preview-server.mjs 39181     # 或起一个预览服务（可切换 ?theme=dark）
+
+# 打包与校验（替代 pnpm pack，不需要 npm/pnpm 缓存）
+node .dev/pack.mjs            # 产出 dsh-cloud-control-<version>.tgz
+node .dev/verify-pack.mjs     # 归档与工作树逐字节比对，期望 PACK OK
 ```
 
 面板的会话区**刻意与原生会话页同构**：布局变量（`--dsh-chat-content-width`、`--dsh-composer-card-max-width`、`--dsh-content-font-size`）、圆角、投影与行节奏都照抄自安装包内客户端的样式，只用 `--dsw-alias-*` / `--dsw-specific-*` 令牌。按插件撰写规范，客户端插件**不得** `require` 其他 Harness 客户端包（会随版本变动、且抛错会清空插槽），所以这里是"抄标记与样式"而不是"引组件"；`client.js` 顶部注释记录了每个值的来源，升级 DSH 后照它重新对一次即可。`node .dev/check-classes.mjs` 会校验"标记里用到的类都有样式、样式里的类都被用到、字面色只出现在图标里"。
@@ -203,6 +249,12 @@ node .dev/preview-server.mjs 39181     # 或起一个预览服务（可切换 ?t
 `.dev/overlay-spoke.yml` 是第二个实例（spoke）的配置，用来本地验证中继；`.dev/`、`.devhome*/` 均已 gitignore。
 
 浏览器半边是**手写**的 `window.__ModuleLoader__.load({id, factory})` 包，不需要构建步骤；改完 `client.js` 保存即可（宿主按文件 mtime 热换）。
+
+## 文档
+
+- [UPGRADING.md](./UPGRADING.md) —— 升级到当前版本：两端步骤、验证清单、回滚、排错表。
+- [docs/feasibility-remote-conversation.md](./docs/feasibility-remote-conversation.md) —— 官方 Remote 面的协议取证：会话内容能读到什么程度、增量与实时性各有哪些选择、为什么不能把远端会话挂进原生会话列表。
+- [docs/deployment-remote-conversation.md](./docs/deployment-remote-conversation.md) —— 部署链路实测记录与故障点表（含一条安全发现：某 NAS 部署的 `/api/*` 无凭证即应答）。
 
 ## License
 
